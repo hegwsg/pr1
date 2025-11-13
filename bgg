@@ -1,0 +1,75 @@
+import logging
+from telegram import Update
+from telegram.ext import CommandHandler, Application, ContextTypes, MessageHandler, filters
+from datetime import datetime
+import re
+from dateparser import parse
+from config import TOKEN
+
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+
+
+
+users_data = {}
+def get_user_data(user_id):
+    if user_id not in users_data:
+        users_data[user_id] = {"events":[], "next_event_id":1}
+    return users_data[user_id]
+def parse_datetime_from_text(text):
+    try:
+        time_match = re.search(r'(\d{1,2}:\d{2})', text)
+        time_str = time_match.group(1) if time_match else None
+        text_without_time = re.sub(r'\d{1,2}:\d{2}', '', text)
+        parsed_date = parse(text_without_time, languages=['ru'])
+        if parsed_date and time_str:
+            time_obj = datetime.striptime(time_str, '%H,%M').time()
+            parsed_date = parsed_date.replace(hour=time_obj.hour, minute=time_obj.minute, second=0, microsecond=0)
+        return parsed_date, text_without_time.strip()
+    except Exception as e:
+        logging.error(f"Error parsing datetime: {e}")
+        return None, text
+async def start(update: Update, context: ContextTypes.DEAFULT_TYPE):
+    user = update.message.from_user
+    await update.message.reply_text(f'Привет, {user.first_name}!\n\n''Я бот для управления расписанием!\n\n'
+                                    'Просто напиши мне:\n''"Завтра в 15:00 совещание"\n'
+                                    '"20 января в 10:30 экзамен"\n''И я создам напоминание!')
+async def help_command(update:Update, context: ContextTypes.DEAFULT_TYPE):
+    """Обработчик команды /help"""
+    help_text = """**Доступные команды:**
+    /start - начать работу
+    /help - показать справку
+    /today - события на сегодня
+    /tomorrow - события на завтра
+    /list - все события
+    **Просто напиши:**
+    "Через 2 часа тренировка"
+    """
+    await update.message.reply_text(help_text)
+async def handle_message(update: Update, context: ContextTypes.DEAFULT_TYPE):
+    user_text = update.message.text
+    user_id = update.message.from_user.id
+    event_datetime, event_text = parse_datetime_from_text(user_text)
+    if event_datetime:
+        user_data = get_user_data(user_id)
+        event_id = user_data['next_event_id']
+        user_data["events"].append({"id": event_id,"text": event_text,"datetime": event_datetime,
+                                    "reminder_sent": False})
+        user_data["next_event_id"]+=1
+        formatted_data = event_datetime.strftime("%d.%m.%Y в %H:%M")
+        await update.message.reply_text(f"**Напоминание создано!**\n"
+                                        f"**Когда:**{formatted_data}\n"
+                                        f"**Событие:**{event_text}")
+    else:
+        await update.message.reply_text("**Не могу понять дату и время**\n\n"
+                                        "Попробуй так:\n"
+                                        "\"20 января в 10:30 экзамен\"\n")
+async def show_today_events(update: Update, context: ContextTypes.DEAFULT_TYPE):
+    user_id = update.message.from_user.id
+    user_data = get_user_data(user_id)
+    today = datetime.now().date()
+    today_events = [event for event in users_data["events"]]
+    if event["date"].date()==today:
+    
+
